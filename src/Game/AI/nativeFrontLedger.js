@@ -128,7 +128,12 @@ const shotDown = (value, many) => {
 
 // A strike, as it is kept among the records: what it is made with, where
 // from, at what, how many, and how many of those were shot down on the way.
-const strikeRecord = ({ id, side, weapon, from, eventIndexes, eventIds, objective, count, down, problem }) => {
+// What shot a strike down, in the words a model may use for it (runtime/strikes.js STRIKE_DEFENCES); anything else,
+// or nothing, is ordinary interceptors.
+const DEFENCE_WORDS = new Map([
+  ...["tesla coil", "tesla coils", "tesla", "tesla tower", "tesla towers", "tesla cannon", "lightning", "lightning coil", "lightning tower", "arc coil", "coil"].map((word) => [word, "tesla coil"]),
+]);
+const strikeRecord = ({ id, side, weapon, from, eventIndexes, eventIds, objective, count, down, by, problem }) => {
   const made = WEAPON_WORDS.get(fold(weapon)) ?? "";
   const many = Math.min(STRIKE_COUNT_MOST, wholeNumber(count) || 1);
   const record = {
@@ -147,6 +152,8 @@ const strikeRecord = ({ id, side, weapon, from, eventIndexes, eventIds, objectiv
     count: many,
     down: shotDown(down, many),
   };
+  const stoppedBy = DEFENCE_WORDS.get(fold(by));
+  if (stoppedBy && record.down > 0) record.by = stoppedBy;
   if (clean(problem)) record.problem = clean(problem);
   else if (!record.side) record.problem = "no side is named";
   else if (!made) record.problem = clean(weapon) ? `"${clean(weapon).slice(0, 40)}" is not a weapon a strike is made with` : "a strike has to say what it is made with";
@@ -235,7 +242,8 @@ export const decodeFrontOrders = (value, { limit = MAX_FRONT_ORDERS_PER_PASS } =
   return records.filter(Boolean).slice(0, limit);
 };
 
-// An event's own strikes (impacts.strikes), one line each: side~weapon~from~target~count~shot down. A line written
+// An event's own strikes (impacts.strikes), one line each: side~weapon~from~target~count~shot down, and after it, where
+// they were not ordinary interceptors, what shot them down (~tesla coil). A line written
 // the battlefield way (strike~side~weapon~from~eventNumbers~target~shot down~count) is read as that. Each is bound to
 // the event that carries it; the unusable ones come back with `problem`, as a frontOrders line does.
 export const EVENT_STRIKES_MOST = 8;
@@ -247,8 +255,8 @@ export const decodeEventStrikes = (value, eventId = "") => {
     const record = fold(fields[0]) === STRIKE_WORD
       ? { ...parseFrontOrderLine(line, index), id }
       : (() => {
-        const [side = "", weapon = "", from = "", target = "", count = "", down = ""] = fields;
-        return strikeRecord({ id, side, weapon, from, eventIndexes: [], eventIds: [], objective: target, count, down });
+        const [side = "", weapon = "", from = "", target = "", count = "", down = "", by = ""] = fields;
+        return strikeRecord({ id, side, weapon, from, eventIndexes: [], eventIds: [], objective: target, count, down, by });
       })();
     return { ...record, eventIndexes: [], eventIds: clean(eventId) ? [clean(eventId)] : [] };
   });

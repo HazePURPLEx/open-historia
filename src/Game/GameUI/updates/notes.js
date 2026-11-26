@@ -54,6 +54,22 @@ import { RELEASES } from "./notesReleases.js";
 // make UPDATES, newest first by date.
 const NEW_UPDATES = [
   {
+    // Tesla coils: a strike's `by` (runtime/strikes.js STRIKE_DEFENCES, "tesla coil"), read from a seventh field of an event's
+    // strike line (Game/AI/nativeFrontLedger.js), drawn by Map/strikeScene.js lightningOf.
+    id: "2026-11-tesla-coils",
+    kind: "minor",
+    date: "2026-11-26",
+    banners: [
+      {
+        title: "Tesla coils on the map",
+        items: [
+          "When an event tells of missiles or aircraft shot down by a Tesla coil, the map now shows it.",
+          "The coil near the target gathers its charge, then lightning leaps up, flickers and forks, and strikes them down before they arrive.",
+        ],
+      },
+    ],
+  },
+  {
     // Orbital beams: runtime/strikes.js "orbital beam" (BEAM_WEAPONS), drawn by Map/strikeScene.js planBeam/beamItemsAt; the story is
     // told it in Game/AI/gameplay.js, and writes it by its name like every other weapon.
     id: "2026-11-orbital-beams",

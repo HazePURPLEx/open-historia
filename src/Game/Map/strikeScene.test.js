@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import { MAP_LAYER_ORDER } from "./mapLayerOrder.js";
 import { STRIKE_LAYER_ID, WORLD_COPIES_MOST, buildStrikeVertices, worldCopies } from "./strikeCustomLayer.js";
 import { findPlaceEntry, strikeEnds } from "./strikePlaces.js";
-import { AIRCRAFT_HEIGHT_KM, AIRCRAFT_SHOWN_MOST, APOGEE_SHARE, BEAM, BEAMS_SHOWN_MOST, INTERCEPTOR_HEAD_PX, MISSILES_SHOWN_MOST, placeFrom, planStrike, rangeKm, ringOf, strikeItemsAt, strikeLasts } from "./strikeScene.js";
+import { AIRCRAFT_HEIGHT_KM, AIRCRAFT_SHOWN_MOST, APOGEE_SHARE, BEAM, BEAMS_SHOWN_MOST, INTERCEPTOR_HEAD_PX, MISSILES_SHOWN_MOST, TESLA, placeFrom, planStrike, rangeKm, ringOf, strikeItemsAt, strikeLasts } from "./strikeScene.js";
 import { forgetStrikeRequests, getStrikeRequest, replayStrikes, showStrikesOfEvent, subscribeStrikeRequests } from "./strikeStore.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -566,4 +566,39 @@ test("a strike of many beams is a few, one after another, and one deflected stop
   const unit = stopped.units[0];
   const met = BEAM.gathers + BEAM.drops + 0.3;
   assert.ok(strikeItemsAt(stopped, unit.start + met).points.some((point) => point.what === "shield" && point.shape === 3));
+});
+
+test("a strike a Tesla coil shoots down is let come close, then lightning leaps from a coil near the place and it bursts", () => {
+  const laid = plan({ weapon: "missile strike", count: 3, down: 3, by: "tesla coil" }, { from: MOSCOW, to: KYIV });
+  assert.equal(laid.hits, false);
+  for (const unit of laid.units) {
+    // The coil stands near what it guards, and the strike is met close to it.
+    assert.equal(unit.interceptor.kind, "tesla");
+    const coil = unit.interceptor.from;
+    assert.ok(rangeKm(coil, unit.lands) <= TESLA.coilKm[1] + 0.5 && rangeKm(coil, unit.lands) >= TESLA.coilKm[0] - 0.5);
+    assert.ok(rangeKm(unit.way(unit.down), unit.way(1)) <= TESLA.reachKm + 1);
+  }
+  const one = plan({ weapon: "missile strike", count: 1, down: 1, by: "tesla coil" }, { from: MOSCOW, to: KYIV });
+  const unit = one.units[0];
+  const meets = unit.start + unit.down * unit.flight;
+  const bolts = (seconds) => strikeItemsAt(one, seconds).ribbons.filter((ribbon) => ribbon.what === "interceptor");
+  // While it charges: the coil glows, and no bolt yet.
+  const charging = strikeItemsAt(one, meets - TESLA.charges / 2);
+  assert.ok(charging.points.some((point) => point.what === "interceptor"));
+  assert.equal(bolts(meets - TESLA.charges / 2).length, 0);
+  // When they meet: a bolt (glow and core) and a fork, from the coil's ground to the strike in the air, jagged.
+  const struck = bolts(meets + 0.05);
+  assert.ok(struck.length >= 4);
+  const core = struck.find((ribbon) => ribbon.width === TESLA.corePx);
+  assert.equal(core.points[0][2], 0);
+  assert.ok(core.points.at(-1)[2] > 0);
+  assert.ok(core.points.length === TESLA.bends + 1);
+  // It changes its shape as it flickers, and is the same every time it is played.
+  assert.notDeepEqual(bolts(meets + 0.02)[1].points, bolts(meets + 0.02 + 2 / TESLA.flickers)[1].points);
+  assert.deepEqual(bolts(meets + 0.05), bolts(meets + 0.05));
+  // And then it is gone.
+  assert.equal(bolts(meets + TESLA.lingers + 0.1).length, 0);
+  // Aircraft are shot down by it as missiles are; a strike nothing stopped keeps no coil.
+  assert.equal(plan({ weapon: "bombing run", count: 2, down: 2, by: "tesla coil" }, { from: MOSCOW, to: KYIV }).units[0].interceptor.kind, "tesla");
+  assert.equal(plan({ weapon: "missile strike", count: 2, down: 2 }, { from: MOSCOW, to: KYIV }).units[0].interceptor.kind, undefined);
 });

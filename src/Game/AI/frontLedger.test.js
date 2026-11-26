@@ -160,3 +160,18 @@ test("what was left out is said once, in a line", () => {
   assert.equal(line.split('"charge" is not an order').length, 2, "one reason, said once");
   assert.equal(describeDroppedFrontOrders([]), "");
 });
+
+test("an event's strike line may say a Tesla coil shot it down, in a seventh field", async () => {
+  const { decodeEventStrikes } = await import("./nativeFrontLedger.js");
+  const [coil, word, nothingStopped, other] = decodeEventStrikes([
+    "Celestial Republic~missile strike~city: New Macau~city: Los Angeles~12~all~tesla coil",
+    "Celestial Republic~silo missile~~city: Los Angeles~2~some~lightning",
+    "Celestial Republic~missile strike~~city: Los Angeles~4~none~tesla coil",
+    "Celestial Republic~missile strike~~city: Los Angeles~4~all~flak",
+  ], "event-1");
+  assert.deepEqual([coil.down, coil.by, coil.problem], [12, "tesla coil", undefined]);
+  assert.equal(word.by, "tesla coil");
+  // (Only a strike something stopped is said to have been stopped by it; anything else is ordinary interceptors.)
+  assert.equal(nothingStopped.by, undefined);
+  assert.equal(other.by, undefined);
+});

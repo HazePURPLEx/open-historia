@@ -241,3 +241,9 @@ test("of two places of one name, the one in the country written after it is take
   const markers = [{ name: "North Silo", ownerCode: "Aland", lng: 40, lat: 50 }, { name: "North Silo", ownerCode: "Borduria", lng: 10, lat: 20 }];
   assert.deepEqual(findStrikePlace("structure: North Silo, country: Borduria", { markers }), { lng: 10, lat: 20 });
 });
+
+test("what shot a strike down: a Tesla coil is kept, and only for a strike something stopped", () => {
+  assert.equal(normalizeStrike(strike({ count: 4, down: 2, by: "tesla coil" })).by, "tesla coil");
+  assert.equal(normalizeStrike(strike({ count: 4, down: 0, by: "tesla coil" })).by, undefined);
+  assert.equal(normalizeStrike(strike({ count: 4, down: 2, by: "flak" })).by, undefined);
+});

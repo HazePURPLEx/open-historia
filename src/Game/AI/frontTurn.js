@@ -527,6 +527,7 @@ export const placeStrikes = async (struck, { events = [], cities = [], world = n
       weapon: order.weapon,
       count: order.count,
       down: order.down,
+      ...(order.by ? { by: order.by } : {}),
       from: launch ? { name: clean(order.from), ...launch } : picked ?? (clean(order.from) ? { name: clean(order.from) } : null),
       to: { name: clean(order.objective), ...(target ?? {}) },
     });

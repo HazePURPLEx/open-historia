@@ -7,6 +7,11 @@
 // shock wave that spreads over the ground and a glow that lingers, for bombs a
 // scatter of bursts.
 //
+// One a Tesla coil shoots down (a strike's `by`, "tesla coil") is let come
+// close: the coil on the ground near what it was aimed at gathers its charge,
+// and lightning leaps up and strikes it, flickering and forking for a moment
+// before it bursts.
+//
 // A BEAM (an orbital beam) flies no way at all. It gathers at a point high
 // over the side it was fired from, then comes down onto the place in a moment
 // and holds there: a white core in a wide cold glow, a fire spreading under it
@@ -128,6 +133,22 @@ export const BEAM = Object.freeze({
   corePx: 3.4,
   glowPx: 15,
 });
+// A Tesla coil: how near the place it was aimed at it lets one come (km), how far
+// from that place its coil stands (km, least and most), how long it gathers its
+// charge before the lightning, how long the lightning lasts after it strikes,
+// how often the bolt changes its shape (times a second), how many bends it has,
+// how far a bend strays (a share of its length), and how wide it is drawn (px).
+export const TESLA = Object.freeze({
+  reachKm: 45,
+  coilKm: [3, 12],
+  charges: 0.55,
+  lingers: 0.4,
+  flickers: 18,
+  bends: 11,
+  strays: 0.09,
+  corePx: 2.2,
+  glowPx: 10,
+});
 // Where along its way a deflected beam is stopped: above the place, on the shield over it.
 const BEAM_STOPPED_AT = 0.84;
 // An aircraft's shadow lies this much of its height away, and no farther than this on the screen (px).
@@ -151,6 +172,9 @@ const COLOURS = {
   // What is sent up to bring a missile or an aircraft down: cold, where the attack is fire-coloured.
   interceptor: [0.86, 0.98, 1],
   interceptorGlow: [0.08, 0.5, 0.98],
+  // Lightning: a white bolt in an electric glow.
+  bolt: [0.95, 0.98, 1],
+  boltGlow: [0.4, 0.72, 1],
   // A beam: a white core in a cold glow, and the scorch it leaves.
   beam: [0.97, 1, 1],
   beamGlow: [0.32, 0.88, 1],
@@ -323,11 +347,20 @@ export const planStrike = (strike, { from, to, flat = false, kmPerPixel = 0 } = 
       height = (at) => apogee * 4 * clamp(at, 0, 1) * (1 - clamp(at, 0, 1));
       start = index * SALVO_GAP;
     }
-    // Where along its way it is shot down, or null.
-    const shotAt = lost.has(index) ? (aircraft ? 0.34 : 0.48) + (aircraft ? 0.5 : 0.4) * chance(strike.id, index, "down") : null;
+    // Where along its way it is shot down, or null. A Tesla coil lets it come close first.
+    const tesla = strike.by === "tesla coil";
+    const near = 1 - Math.min(0.5, TESLA.reachKm / km) * (0.45 + 0.55 * chance(strike.id, index, "down"));
+    const shotAt = lost.has(index)
+      ? tesla ? near : (aircraft ? 0.34 : 0.48) + (aircraft ? 0.5 : 0.4) * chance(strike.id, index, "down")
+      : null;
     // And what shoots it down: from the ground on the defenders' side of where it is met.
     let interceptor = null;
-    if (shotAt !== null) {
+    if (shotAt !== null && tesla) {
+      // The coil stands near what it guards, and its lightning leaps from there.
+      const [least, most] = TESLA.coilKm;
+      const base = placeFrom(lands, chance(strike.id, index, "coil bearing") * 360, least + (most - least) * chance(strike.id, index, "coil off"));
+      interceptor = { kind: "tesla", from: [base[0], base[1]], seconds: TESLA.charges, seed: `${strike.id}|${index}` };
+    } else if (shotAt !== null) {
       const met = way(shotAt);
       const under = way(Math.min(1, shotAt + Math.min(1 - shotAt, INTERCEPTOR_KM_MOST / km)));
       const base = placeFrom(under, chance(strike.id, index, "interceptor bearing") * 360, 6 + 26 * chance(strike.id, index, "interceptor off"));
@@ -481,11 +514,84 @@ const burst = (items, at, since, kmPerPixel, scale = 1) => {
     waveRing(items, at, Math.max(0.5, atLeast(BURST.wave, BURST.wavePx) * easeOut(gone)), 1.6, 0.7 * (1 - gone), 1);
   }
 };
+// A Tesla coil's lightning at one it shoots down: its coil gathers a charge for
+// `seconds` before they meet, then a bolt leaps from it to where the strike is
+// and holds there, changing its shape TESLA.flickers times a second and forking
+// once, and dies away; the coil glows on a moment after. `since` as for an
+// interceptor. Each shape is drawn from `seed` and the moment, so it is the
+// same every time it is played.
+const lightningOf = (items, coil, met, since) => {
+  const charge = 1 + since / coil.seconds;
+  if (charge < 0) return;
+  const base = [unwrap(coil.from[0], met[0]), coil.from[1], 0];
+  const lit = since >= 0 && since < TESLA.lingers;
+  const after = since - TESLA.lingers;
+  // The coil: a glow that gathers, flares while it fires, and fades.
+  const glow = since < 0 ? easeOut(charge) : lit ? 1 : 1 - clamp(after / 0.6, 0, 1);
+  if (glow > 0) {
+    const flick = 0.85 + 0.15 * chance(coil.seed, Math.floor((since + 10) * TESLA.flickers), "coil");
+    items.points.push({ at: base, size: (8 + 22 * glow) * flick, shape: 0, colour: COLOURS.boltGlow, alpha: 0.75 * glow, what: "interceptor" });
+    items.points.push({ at: base, size: 4 + 7 * glow, shape: 2, colour: COLOURS.bolt, alpha: glow, what: "interceptor" });
+  }
+  // Sparks that crawl round it while it charges.
+  if (since < 0) {
+    for (let spark = 0; spark < 3; spark += 1) {
+      const moment = Math.floor((since + 10) * TESLA.flickers);
+      if (chance(coil.seed, moment, `spark ${spark}`) > 0.55 + 0.35 * (1 - charge)) continue;
+      const off = placeFrom(base, chance(coil.seed, moment, `spark at ${spark}`) * 360, 1.5 + 3 * chance(coil.seed, moment, `spark far ${spark}`));
+      items.points.push({ at: [off[0], off[1], 0], size: 4, shape: 2, colour: COLOURS.bolt, alpha: 0.8, what: "interceptor" });
+    }
+    return;
+  }
+  if (!lit) return;
+  const fade = 1 - clamp((since - TESLA.lingers * 0.6) / (TESLA.lingers * 0.4), 0, 1);
+  const moment = Math.floor(since * TESLA.flickers);
+  // The bolt: from the coil to where the strike is, every bend a little aside, most in its middle.
+  const dx = met[0] - base[0];
+  const dy = met[1] - base[1];
+  const length = Math.hypot(dx, dy) || 1e-6;
+  const side = [-dy / length, dx / length];
+  const bolt = (from, to, bends, strays, key) => {
+    const points = [];
+    for (let step = 0; step <= bends; step += 1) {
+      const part = step / bends;
+      const swing = step === 0 || step === bends ? 0 : (chance(coil.seed, moment, `${key} ${step}`) - 0.5) * 2 * strays * Math.sin(Math.PI * part);
+      const lng = from[0] + (to[0] - from[0]) * part + side[0] * swing * length;
+      const lat = from[1] + (to[1] - from[1]) * part + side[1] * swing * length;
+      points.push([lng, lat, from[2] + (to[2] - from[2]) * part]);
+    }
+    return points;
+  };
+  const main = bolt(base, met, TESLA.bends, TESLA.strays, "bolt");
+  const draw = (points, scale) => {
+    items.ribbons.push({ points, width: TESLA.glowPx * scale, colour: COLOURS.boltGlow, from: 0.5 * fade, to: 0.5 * fade, what: "interceptor" });
+    items.ribbons.push({ points, width: TESLA.corePx * scale, colour: COLOURS.bolt, from: fade, to: fade, what: "interceptor" });
+  };
+  draw(main, 1);
+  // A fork off it, from a bend part of the way up, that dies out into the air.
+  const at = 3 + Math.floor(chance(coil.seed, moment, "fork at") * (TESLA.bends - 6));
+  const start = main[at];
+  const turn = (chance(coil.seed, moment, "fork turn") - 0.5) * 1.4;
+  const reach = 0.25 + 0.2 * chance(coil.seed, moment, "fork reach");
+  const end = [
+    start[0] + (dx * Math.cos(turn) - dy * Math.sin(turn)) * reach,
+    start[1] + (dx * Math.sin(turn) + dy * Math.cos(turn)) * reach,
+    start[2] + (met[2] - base[2]) * reach * 0.6,
+  ];
+  draw(bolt(start, end, 5, 0.12, "fork"), 0.6);
+  // Where it strikes, a white flash.
+  items.points.push({ at: met, size: 16 + 10 * chance(coil.seed, moment, "flash"), shape: 2, colour: COLOURS.bolt, alpha: fade, what: "interceptor" });
+};
+
 // What is sent up at one that is intercepted: it leaves the ground `seconds`
 // before the two meet and climbs to where they do, a cold streak against the
 // fire of the attack. `since` is the time since they met (under nothing before).
 const interceptorOf = (items, meets, met, since) => {
   if (!meets) return;
+  if (meets.kind === "tesla") {
+    lightningOf(items, meets, met, since);
+    return;
+  }
   const gone = 1 + since / meets.seconds;
   if (gone < 0) return;
   const from = [unwrap(meets.from[0], met[0]), meets.from[1]];

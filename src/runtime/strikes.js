@@ -15,6 +15,8 @@
 //            | "nuclear bomber" | "bombing run" | "orbital beam"
 //   count    how many missiles, aircraft or beams
 //   down     how many of them were intercepted (a beam: deflected) before they got there
+//   by       what shot them down, where it was not ordinary interceptors: "tesla coil" (lightning from a coil on
+//            the ground near the target). Absent for an ordinary interception, and for a strike nothing stopped
 //   spreadKm how wide the bombs of a bombing run scatter round the place, in km, where
 //            it was set (a war room strike's radius: fronts/airStrike.js airStrikeVisuals); else as always
 //
@@ -32,6 +34,8 @@ export const STRIKE_WEAPONS = Object.freeze(["silo missile", "submarine missile"
 export const NUCLEAR_WEAPONS = Object.freeze(["silo missile", "submarine missile", "nuclear bomber"]);
 export const AIRCRAFT_WEAPONS = Object.freeze(["nuclear bomber", "bombing run"]);
 export const BEAM_WEAPONS = Object.freeze(["orbital beam"]);
+// What a strike can be shot down by besides ordinary interceptors (a strike's `by`).
+export const STRIKE_DEFENCES = Object.freeze(["tesla coil"]);
 // The most a strike is said to be of, the most strikes a turn adds, and the most the world keeps.
 export const STRIKE_COUNT_MOST = 500;
 export const STRIKES_PER_TURN_MOST = 16;
@@ -70,6 +74,7 @@ export const normalizeStrike = (entry) => {
   const to = readPlace(entry.to);
   if (!id || !weapon || !owner || !to) return null;
   const count = Math.max(1, Math.min(STRIKE_COUNT_MOST, Math.round(Number(entry.count) || 0) || 1));
+  const down = Math.max(0, Math.min(count, Math.round(Number(entry.down) || 0)));
   return {
     id,
     eventId: clean(entry.eventId, 80),
@@ -78,7 +83,9 @@ export const normalizeStrike = (entry) => {
     owner,
     weapon,
     count,
-    down: Math.max(0, Math.min(count, Math.round(Number(entry.down) || 0))),
+    down,
+    // (Only for a strike something did stop.)
+    ...(down > 0 && STRIKE_DEFENCES.includes(entry.by) ? { by: entry.by } : {}),
     from: readPlace(entry.from),
     to,
     ...(Number(entry.spreadKm) > 0 ? { spreadKm: Math.min(200, Math.round(Number(entry.spreadKm) * 10) / 10) } : {}),
